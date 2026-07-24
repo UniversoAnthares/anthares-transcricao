@@ -22,13 +22,13 @@ def transcricao():
             '--audio-format', 'mp3', '--audio-quality', '5',
             '-o', saida, url,
         ]
-        try:
-            subprocess.run(cmd, capture_output=True, timeout=120, check=False)
+try:
+            resultado = subprocess.run(cmd, capture_output=True, timeout=120, check=False, text=True)
         except subprocess.TimeoutExpired:
             return jsonify({'erro': 'timeout'}), 504
         arquivos = [f for f in os.listdir(tmp) if f.endswith('.mp3')]
         if not arquivos:
-            return jsonify({'erro': 'sem audio'}), 404
+            return jsonify({'erro': 'sem audio', 'stderr': resultado.stderr[-1500:]}), 404
         caminho_audio = os.path.join(tmp, arquivos[0])
         if os.path.getsize(caminho_audio) > 24 * 1024 * 1024:
             return jsonify({'erro': 'audio grande demais'}), 413
