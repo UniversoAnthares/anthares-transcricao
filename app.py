@@ -9,6 +9,7 @@ app = Flask(__name__)
 
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 
+
 @app.route('/transcricao')
 def transcricao():
     video_id = request.args.get('v', '').strip()
@@ -22,7 +23,7 @@ def transcricao():
             '--audio-format', 'mp3', '--audio-quality', '5',
             '-o', saida, url,
         ]
-try:
+        try:
             resultado = subprocess.run(cmd, capture_output=True, timeout=120, check=False, text=True)
         except subprocess.TimeoutExpired:
             return jsonify({'erro': 'timeout'}), 504
@@ -47,9 +48,11 @@ try:
             return jsonify({'erro': 'transcricao vazia'}), 404
         return jsonify({'texto': texto})
 
+
 @app.route('/')
 def health():
     return jsonify({'status': 'ok'})
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
