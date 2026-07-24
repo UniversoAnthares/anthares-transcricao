@@ -47,6 +47,7 @@ def transcricao():
             '--sub-lang', 'pt,pt-BR,pt-PT',
             '--sub-format', 'vtt',
             '--cookies', 'cookies.txt',
+            '--ignore-no-formats-error',
             '-o', saida,
             url,
         ]
