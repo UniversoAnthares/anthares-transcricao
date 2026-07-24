@@ -50,10 +50,13 @@ def transcricao():
             url,
         ]
         try:
-            subprocess.run(cmd, capture_output=True, timeout=60, check=False)
+            resultado = subprocess.run(cmd, capture_output=True, timeout=60, check=False, text=True)
         except subprocess.TimeoutExpired:
             return jsonify({'erro': 'timeout'}), 504
-
+        arquivos = [f for f in os.listdir(tmp) if f.endswith('.vtt')]
+        if not arquivos:
+            return jsonify({'erro': 'sem legenda', 'stderr': resultado.stderr[-1500:], 'stdout': resultado.stdout[-500:]}), 404
+            
         arquivos = [f for f in os.listdir(tmp) if f.endswith('.vtt')]
         if not arquivos:
             return jsonify({'erro': 'sem legenda'}), 404
