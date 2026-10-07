@@ -1,6 +1,7 @@
 import mimetypes
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 
@@ -28,9 +29,17 @@ def transcricao():
 
     with tempfile.TemporaryDirectory() as tmp:
         saida = os.path.join(tmp, "audio.%(ext)s")
+        deno = shutil.which("deno")
+        if not deno:
+            return jsonify({"erro": "runtime javascript do youtube indisponivel"}), 503
         cmd = [
             "yt-dlp",
             "--no-playlist",
+            "--js-runtimes", f"deno:{deno}",
+            "--retries", "8",
+            "--fragment-retries", "8",
+            "--extractor-retries", "3",
+            "--socket-timeout", "30",
             "-f", "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
             "--max-filesize", str(MAX_AUDIO_BYTES),
             "-o", saida,
