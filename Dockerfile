@@ -2,7 +2,7 @@ FROM python:3.11-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl ffmpeg ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && DENO_INSTALL=/usr/local curl -fsSL https://deno.land/install.sh | sh
+    && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
