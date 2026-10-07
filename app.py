@@ -32,6 +32,7 @@ def transcricao():
             "yt-dlp",
             "--no-playlist",
             "-f", "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+            "--max-filesize", str(MAX_AUDIO_BYTES),
             "-o", saida,
             url,
         ]
@@ -46,11 +47,13 @@ def transcricao():
             )
         except subprocess.TimeoutExpired:
             return jsonify({"erro": "timeout"}), 504
+        except OSError:
+            return jsonify({"erro": "servico de download indisponivel"}), 503
 
         if resultado.returncode != 0:
             return jsonify({
                 "erro": "download falhou",
-                "stderr": resultado.stderr[-1500:],
+                "detalhe": "o provedor de vídeo não retornou áudio utilizável",
             }), 502
 
         arquivos = [
@@ -78,12 +81,12 @@ def transcricao():
                     timeout=90,
                 )
         except requests.RequestException as exc:
-            return jsonify({"erro": "falha de conexao com groq", "detalhe": str(exc)}), 502
+            return jsonify({"erro": "falha de conexao com groq"}), 502
 
         if resp.status_code != 200:
             return jsonify({
                 "erro": "groq falhou",
-                "detalhe": resp.text[:500],
+                "detalhe": "o provedor de transcrição recusou a solicitação",
             }), 502
 
         try:
