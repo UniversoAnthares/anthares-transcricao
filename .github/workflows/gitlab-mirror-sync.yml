@@ -1,0 +1,19 @@
+name: GitLab redundancy sync
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror all refs to GitLab
+        env:
+          GITLAB_MIRROR_URL: ${{ secrets.GITLAB_MIRROR_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$GITLAB_MIRROR_URL"
+          git clone --mirror "https://github.com/${GITHUB_REPOSITORY}.git" mirror.git
+          git -C mirror.git push --mirror "$GITLAB_MIRROR_URL"
