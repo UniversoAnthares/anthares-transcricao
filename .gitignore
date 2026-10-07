@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+cookies*.txt
+__pycache__/
+*.py[cod]
+*.part
+*.m4a
+*.webm
+.pytest_cache/
