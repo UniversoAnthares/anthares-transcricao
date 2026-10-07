@@ -1,0 +1,39 @@
+name: GitLab redundancy sync
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate mirror credential
+        env:
+          GITLAB_MIRROR_URL: ${{ secrets.GITLAB_MIRROR_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$GITLAB_MIRROR_URL"
+
+      - name: Mirror all refs to GitLab
+        env:
+          GITLAB_MIRROR_URL: ${{ secrets.GITLAB_MIRROR_URL }}
+        run: |
+          set -euo pipefail
+          git clone --mirror "https://github.com/${GITHUB_REPOSITORY}.git" mirror.git
+          git -C mirror.git push --mirror "$GITLAB_MIRROR_URL"
+
+      - name: Verify main SHA
+        env:
+          GITLAB_MIRROR_URL: ${{ secrets.GITLAB_MIRROR_URL }}
+        run: |
+          set -euo pipefail
+          github_sha="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/main | awk '{print $1}')"
+          gitlab_sha="$(git ls-remote "$GITLAB_MIRROR_URL" refs/heads/main | awk '{print $1}')"
+          test -n "$github_sha"
+          test "$github_sha" = "$gitlab_sha"
+          echo "GITLAB_CROSS_PROVIDER_SHA=PROVEN sha=$github_sha"
