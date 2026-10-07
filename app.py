@@ -31,6 +31,7 @@ def transcricao():
         cmd = [
             "yt-dlp",
             "--no-playlist",
+            "--max-filesize", str(MAX_AUDIO_BYTES),
             "-f", "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
             "-o", saida,
             url,
@@ -48,10 +49,8 @@ def transcricao():
             return jsonify({"erro": "timeout"}), 504
 
         if resultado.returncode != 0:
-            return jsonify({
-                "erro": "download falhou",
-                "stderr": resultado.stderr[-1500:],
-            }), 502
+            app.logger.warning("yt-dlp falhou com código %s", resultado.returncode)
+            return jsonify({"erro": "download falhou"}), 502
 
         arquivos = [
             f for f in os.listdir(tmp)
@@ -77,14 +76,13 @@ def transcricao():
                     data={"model": GROQ_MODEL, "language": "pt"},
                     timeout=90,
                 )
-        except requests.RequestException as exc:
-            return jsonify({"erro": "falha de conexao com groq", "detalhe": str(exc)}), 502
+        except requests.RequestException:
+            app.logger.warning("falha de conexão com Groq", exc_info=True)
+            return jsonify({"erro": "falha de conexao com groq"}), 502
 
         if resp.status_code != 200:
-            return jsonify({
-                "erro": "groq falhou",
-                "detalhe": resp.text[:500],
-            }), 502
+            app.logger.warning("Groq respondeu com HTTP %s", resp.status_code)
+            return jsonify({"erro": "groq falhou"}), 502
 
         try:
             texto = resp.json().get("text", "")
