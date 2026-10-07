@@ -1,59 +1,107 @@
+import mimetypes
+import os
 import re
 import subprocess
 import tempfile
-import os
+
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+GROQ_MODEL = "whisper-large-v3"
+MAX_AUDIO_BYTES = 24 * 1024 * 1024
 
 
-@app.route('/transcricao')
+@app.route("/transcricao")
 def transcricao():
-    video_id = request.args.get('v', '').strip()
-    if not video_id or not re.match(r'^[\w-]{11}$', video_id):
-        return jsonify({'erro': 'video_id invalido'}), 400
-    url = f'https://www.youtube.com/watch?v={video_id}'
+    video_id = request.args.get("v", "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
+        return jsonify({"erro": "video_id invalido"}), 400
+
+    if not GROQ_API_KEY:
+        return jsonify({"erro": "GROQ_API_KEY nao configurada"}), 503
+
+    url = f"https://www.youtube.com/watch?v={video_id}"
+
     with tempfile.TemporaryDirectory() as tmp:
-        saida = os.path.join(tmp, 'audio.%(ext)s')
+        saida = os.path.join(tmp, "audio.%(ext)s")
         cmd = [
-            'yt-dlp', '-f', 'bestaudio', '--extract-audio',
-            '--audio-format', 'mp3', '--audio-quality', '5',
-            '-o', saida, url,
+            "yt-dlp",
+            "--no-playlist",
+            "-f", "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+            "-o", saida,
+            url,
         ]
+
         try:
-            resultado = subprocess.run(cmd, capture_output=True, timeout=120, check=False, text=True)
-        except subprocess.TimeoutExpired:
-            return jsonify({'erro': 'timeout'}), 504
-        arquivos = [f for f in os.listdir(tmp) if f.endswith('.mp3')]
-        if not arquivos:
-            return jsonify({'erro': 'sem audio', 'stderr': resultado.stderr[-1500:]}), 404
-        caminho_audio = os.path.join(tmp, arquivos[0])
-        if os.path.getsize(caminho_audio) > 24 * 1024 * 1024:
-            return jsonify({'erro': 'audio grande demais'}), 413
-        with open(caminho_audio, 'rb') as f:
-            resp = requests.post(
-                'https://api.groq.com/openai/v1/audio/transcriptions',
-                headers={'Authorization': f'Bearer {GROQ_API_KEY}'},
-                files={'file': (arquivos[0], f, 'audio/mpeg')},
-                data={'model': 'whisper-large-v3', 'language': 'pt'},
-                timeout=90,
+            resultado = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=120,
+                check=False,
+                text=True,
             )
+        except subprocess.TimeoutExpired:
+            return jsonify({"erro": "timeout"}), 504
+
+        if resultado.returncode != 0:
+            return jsonify({
+                "erro": "download falhou",
+                "stderr": resultado.stderr[-1500:],
+            }), 502
+
+        arquivos = [
+            f for f in os.listdir(tmp)
+            if not f.endswith(".part") and os.path.isfile(os.path.join(tmp, f))
+        ]
+        if not arquivos:
+            return jsonify({"erro": "sem audio"}), 404
+
+        caminho_audio = os.path.join(tmp, arquivos[0])
+        tamanho = os.path.getsize(caminho_audio)
+        if tamanho > MAX_AUDIO_BYTES:
+            return jsonify({"erro": "audio grande demais"}), 413
+
+        extensao = os.path.splitext(caminho_audio)[1].lower()
+        mime = mimetypes.guess_type(caminho_audio)[0] or "application/octet-stream"
+
+        try:
+            with open(caminho_audio, "rb") as f:
+                resp = requests.post(
+                    GROQ_URL,
+                    headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                    files={"file": (f"audio{extensao}", f, mime)},
+                    data={"model": GROQ_MODEL, "language": "pt"},
+                    timeout=90,
+                )
+        except requests.RequestException as exc:
+            return jsonify({"erro": "falha de conexao com groq", "detalhe": str(exc)}), 502
+
         if resp.status_code != 200:
-            return jsonify({'erro': 'groq falhou', 'detalhe': resp.text[:500]}), 502
-        texto = resp.json().get('text', '')
+            return jsonify({
+                "erro": "groq falhou",
+                "detalhe": resp.text[:500],
+            }), 502
+
+        try:
+            texto = resp.json().get("text", "")
+        except ValueError:
+            return jsonify({"erro": "resposta invalida da groq"}), 502
+
         if not texto:
-            return jsonify({'erro': 'transcricao vazia'}), 404
-        return jsonify({'texto': texto})
+            return jsonify({"erro": "transcricao vazia"}), 404
+
+        return jsonify({"texto": texto})
 
 
-@app.route('/')
+@app.route("/")
 def health():
-    return jsonify({'status': 'ok'})
+    return jsonify({"status": "ok"})
 
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
