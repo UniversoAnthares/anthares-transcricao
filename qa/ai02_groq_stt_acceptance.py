@@ -92,7 +92,7 @@ def request_once(data, key):
           data+b"\r\n"+(f"--{boundary}--\r\n").encode())
     req=urllib.request.Request(ENDPOINT, data=body,
           headers={"Authorization":"Bearer "+key,
-                   "Content-Type":"multipart/form-data; boundary="+boundary},method="POST")
+                   "Content-Type":"multipart/form-data; boundary="+boundary,"User-Agent":"anthares-ai02-acceptance/1.0"},method="POST")
     begin=time.monotonic()
     with urllib.request.urlopen(req, timeout=90) as resp:
         raw=resp.read(1024*1024+1)
