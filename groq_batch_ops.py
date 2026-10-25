@@ -28,6 +28,11 @@ def prepare(items):
         elif endpoint in ("/v1/audio/transcriptions", "/v1/audio/translations"):
             if body.get("model") not in AUDIO_MODELS:
                 raise ValueError("unapproved audio model")
+            if endpoint == "/v1/audio/translations" and body.get("model") == "whisper-large-v3-turbo":
+                raise ValueError("turbo does not support translation")
+            audio_url = body.get("url")
+            if not isinstance(audio_url, str) or not audio_url.startswith("https://") or "file" in body:
+                raise ValueError("Batch audio requires a previously authorized HTTPS URL; no file uploads")
         else:
             raise ValueError("unapproved endpoint")
         if not isinstance(body, dict):
