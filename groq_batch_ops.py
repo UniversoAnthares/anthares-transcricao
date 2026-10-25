@@ -18,6 +18,8 @@ def prepare(items):
     seen = set()
     for item in items:
         cid, endpoint, body = item["custom_id"], item["url"], item["body"]
+        if not isinstance(body, dict):
+            raise ValueError("invalid body")
         if not isinstance(cid, str) or not cid or len(cid) > 100 or cid in seen:
             raise ValueError("invalid/duplicate custom_id")
         if endpoint == "/v1/chat/completions":
