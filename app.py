@@ -7,6 +7,7 @@ import tempfile
 
 import requests
 from flask import Flask, jsonify, request
+from groq_resilience import Circuit, CircuitOpen, normalize_transcription
 
 app = Flask(__name__)
 
@@ -14,6 +15,8 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 GROQ_MODEL = "whisper-large-v3"
 MAX_AUDIO_BYTES = 24 * 1024 * 1024
+BREAKER = Circuit()
+BREAKER_SCOPE = "groq-stt"
 
 
 @app.route("/transcricao")
@@ -24,6 +27,12 @@ def transcricao():
 
     if not GROQ_API_KEY:
         return jsonify({"erro": "GROQ_API_KEY nao configurada"}), 503
+
+    try:
+        BREAKER.check(BREAKER_SCOPE)
+    except CircuitOpen as exc:
+        return jsonify({"erro": "transcricao indisponivel",
+                        "categoria": exc.reason}), 503
 
     url = f"https://www.youtube.com/watch?v={video_id}"
 
@@ -86,27 +95,39 @@ def transcricao():
                     GROQ_URL,
                     headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
                     files={"file": (f"audio{extensao}", f, mime)},
-                    data={"model": GROQ_MODEL, "language": "pt"},
+                    data={"model": GROQ_MODEL, "language": "pt",
+                          "response_format": "verbose_json"},
                     timeout=90,
                 )
-        except requests.RequestException as exc:
-            return jsonify({"erro": "falha de conexao com groq"}), 502
+        except requests.Timeout:
+            # POST may have been accepted by the provider. Never replay silently.
+            BREAKER.trip(BREAKER_SCOPE, "UNCERTAIN")
+            return jsonify({"erro": "resposta incerta", "categoria": "UNCERTAIN"}), 504
+        except requests.RequestException:
+            BREAKER.trip(BREAKER_SCOPE, "UNCERTAIN")
+            return jsonify({"erro": "conexao incerta", "categoria": "UNCERTAIN"}), 502
 
         if resp.status_code != 200:
-            return jsonify({
-                "erro": "groq falhou",
-                "detalhe": "o provedor de transcrição recusou a solicitação",
-            }), 502
+            if resp.status_code == 402:
+                category = "PAYMENT_REQUIRED"
+            elif resp.status_code == 429:
+                category = "RATE_LIMIT"
+            elif resp.status_code >= 500:
+                category = "UPSTREAM_ERROR"
+            else:
+                category = "REQUEST_REJECTED"
+            BREAKER.trip(BREAKER_SCOPE, category,
+                         resp.headers.get("Retry-After"))
+            return jsonify({"erro": "groq recusou solicitação",
+                            "categoria": category}), 503
 
         try:
-            texto = resp.json().get("text", "")
-        except ValueError:
+            result = normalize_transcription(resp.json())
+        except (ValueError, TypeError):
+            BREAKER.trip(BREAKER_SCOPE, "UPSTREAM_ERROR")
             return jsonify({"erro": "resposta invalida da groq"}), 502
-
-        if not texto:
-            return jsonify({"erro": "transcricao vazia"}), 404
-
-        return jsonify({"texto": texto})
+        BREAKER.success(BREAKER_SCOPE)
+        return jsonify(result)
 
 
 @app.route("/")
