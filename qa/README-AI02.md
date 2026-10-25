@@ -27,3 +27,17 @@ Fonte de governança: manifesto GitHub main `2e28d54043d6bad1`; preflight local 
 - Checklist canônico: https://docs.google.com/document/d/1SkjpRPJYLe9n_9SDOA4s-RibN8Pb_hm6-ukS6pbV7aQ/edit
 
 **Estado AI-02: PARCIAL (QA offline implantado em branch).** Nenhum resultado foi promovido a transcrição Groq real, uso em produção ou homologação integral.
+
+## TESTE REAL APROVADO EM 25/10/2026 — AI-02 / item 29
+
+**Transcrição autenticada comprovada:** principal Windows DESKTOP-FTDK0HP\Lucas tem GROQ_API_KEY no próprio ambiente; SYSTEM não tem. A chave não foi exibida. GET /models autenticado HTTP 200, com ambos modelos Whisper disponíveis. WAV pt-BR estritamente sintético, 435.556 bytes, SHA256 f9bb3514868366b39cdf220bdf2d8306edd5ff7c2b34ba91f386ec978634d331.
+
+**Diagnóstico e correção:** a consulta GET /models com User-Agent padrão de Python urllib retornou HTTP 403; a mesma consulta com User-Agent explícito HTTP 200. Primeira requisição POST STT antes da correção HTTP 403, sem replay. Corrigido em qa/ai02_groq_stt_acceptance.py para enviar User-Agent anthares-ai02-acceptance/1.0. Acrescentado teste mockado para este cabeçalho: 5/5 unittest PASS. Hash SHA256 do script local corrigido f882a71771fbd4aea9cfdfafff48b377390999d8b5cf1fffbf25c2bf3e6b6829; testes 6624baa28915691fb767f5ff46d3c2c2b6b40926d00d42536ec8c2a4310db000.
+
+**Primeira transcrição real (depois da correção):** model whisper-large-v3-turbo; duração 9,876 s; WER 0,00000 contra fala sintetizada; latência 0,875 s; 2 segmentos, sequenciais e em limites válidos; quota x-ratelimit-limit-requests 2000, remaining-requests 1999, reset-requests 43.2s; status PASS_LIVE_REQUIRES_ACCOUNT_ZDR_CHECK.
+
+**Segunda execução real dedicada ao alinhamento:** latência 1,141 s, WER 0,00000. Texto: A literatura brasileira possui uma longa história. O escritor observa as palavras e organiza suas frases. Segmentos Groq: [0,00;3,36] e [4,44;8,80] segundos. Análise independente da energia RMS do WAV com quadros de 10 ms: começo de fala 0,11 s; silêncio [3,53;4,47] s; final de fala 8,97 s. Desvios aproximados dos quatro limites: 0,11, 0,17, 0,03, 0,17 s, máximo 0,17 s. Essa referência acústica NÃO equivale à anotação fonética humana. Requisição: req_01m5tgrg70esabkhny7ebdvejd.
+
+**Custo e retenção:** preço público Groq Turbo US$ 0,04/h com mínimo faturável 10 s, estimativa US$ 0,0001111 por inferência; não é despesa contabilizada nem auditoria de fatura. Quota de requisições efetivamente recebida em headers, mas plano, limites de áudio, ZDR e settings da organização não auditados. Política oficial https://console.groq.com/docs/your-data: entradas/saídas de inferência não retidas por padrão, exceto logs operacionais/abuso até 30 dias; ZDR opcional. Nunca modificar ZDR sem coordenação com AI-03 Batch. A mídia usada não contém dados pessoais.
+
+**Decisão de aceite:** HOMOLOGAÇÃO TÉCNICA STT APROVADA PARA AMOSTRA SINTÉTICA. Ativação como fallback em produção ainda condicionada a AI-01, SEC-02, governança de dados, validação com mídia real autorizada, revisão do PR #6, integração e rollback comprovados. Não declarar fallback implantado. Nenhuma alteração produtiva, merge, deploy, publicação ou alteração dos demais publicadores.
