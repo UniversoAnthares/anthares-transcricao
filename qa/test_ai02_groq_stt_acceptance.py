@@ -33,3 +33,18 @@ class ProbeTests(unittest.TestCase):
             with unittest.mock.patch.dict("os.environ",{"GROQ_API_KEY":""}):
                 self.assertEqual(run(self.file,self.reference,live=True)["result"],"BLOCKED_NO_AUTHORIZED_KEY")
             net.assert_not_called()
+
+
+    def test_user_agent_request(self):
+        import io
+        from ai02_groq_stt_acceptance import request_once
+        def fake_open(req, timeout):
+            self.assertEqual(req.get_header("User-agent"), "anthares-ai02-acceptance/1.0")
+            self.assertEqual(req.get_method(), "POST")
+            r=io.BytesIO(b'{"text":"ok","segments":[]}')
+            r.headers={}
+            return r
+        with unittest.mock.patch("ai02_groq_stt_acceptance.urllib.request.urlopen", side_effect=fake_open):
+            payload, headers, latency = request_once(b"synthetic audio", "TEST_ONLY_NO_NETWORK")
+            self.assertEqual(payload["text"], "ok")
+
