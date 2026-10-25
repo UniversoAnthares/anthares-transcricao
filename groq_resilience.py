@@ -4,6 +4,7 @@ This SQLite state is scoped to one host. A distributed deployment must replace
 it with the existing canonical shared ledger before automatic failover.
 """
 import email.utils
+from contextlib import contextmanager
 import os
 import sqlite3
 import time
@@ -24,10 +25,18 @@ class Circuit:
                 scope TEXT PRIMARY KEY, reason TEXT NOT NULL, open_until REAL NOT NULL
             )""")
 
+    @contextmanager
     def _db(self):
         db = sqlite3.connect(self.path, timeout=15)
-        db.execute("PRAGMA busy_timeout=15000")
-        return db
+        try:
+            db.execute("PRAGMA busy_timeout=15000")
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     def check(self, scope):
         with self._db() as db:
