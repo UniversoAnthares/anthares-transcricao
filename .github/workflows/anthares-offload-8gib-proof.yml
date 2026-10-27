@@ -1,0 +1,65 @@
+name: Anthares - Prova de processamento externo 8 GiB
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/anthares-offload-8gib-proof.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: anthares-offload-8gib-proof
+  cancel-in-progress: true
+jobs:
+  offload-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Validate ephemeral remote capacity (no local D drive)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, shutil, socket, pathlib
+          p = pathlib.Path(os.environ['RUNNER_TEMP'])
+          u = shutil.disk_usage(p)
+          minimum = 8 * 1024 ** 3
+          result = {
+            "host": socket.gethostname(),
+            "workspace": str(p),
+            "remote_hosted": bool(os.getenv("GITHUB_ACTIONS")) and os.getenv("RUNNER_OS") == "Linux",
+            "required_bytes": minimum,
+            "free_bytes": u.free,
+            "capacity_ok": u.free >= minimum
+          }
+          print("ANTHARES_OFFLOAD_CAPACITY=" + json.dumps(result, sort_keys=True))
+          assert result["remote_hosted"], "HOSTED_RUNNER_NOT_VERIFIED"
+          assert result["capacity_ok"], "INSUFFICIENT_REMOTE_SCRATCH"
+          PY
+      - name: Run real public media processing in GitHub cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="$(mktemp -d -p "$RUNNER_TEMP" anthares-offload-XXXXXXXX)"
+          trap 'rm -rf -- "$dir"' EXIT
+          source_url='https://anthares.us/wp-content/uploads/anthares-clips/2026/10/short_fOmihuHUT1M_g1_8111_8153.mp4'
+          status="$(curl --silent --show-error --location --max-redirs 3 --max-time 45 --max-filesize 33554432 --output "$dir/input.mp4" --write-out '%{http_code}' "$source_url")"
+          if [[ "$status" == 429 || "$status" == 402 ]]; then
+            echo 'SOURCE_QUOTA_DETECTED_CANCEL_IMMEDIATELY'
+            exit 75
+          fi
+          [[ "$status" == 200 ]] || { echo "PUBLIC_SOURCE_HTTP_$status"; exit 1; }
+          test -s "$dir/input.mp4"
+          command -v ffmpeg >/dev/null
+          ffmpeg -nostdin -hide_banner -loglevel error -y -i "$dir/input.mp4" -t 3 -map 0:v:0 -vf 'scale=320:-2' -an -c:v libx264 -preset ultrafast "$dir/remote-processed.mp4"
+          test -s "$dir/remote-processed.mp4"
+          sha="$(sha256sum "$dir/remote-processed.mp4" | cut -d' ' -f1)"
+          bytes="$(wc -c < "$dir/remote-processed.mp4")"
+          echo "ANTHARES_OFFLOAD_PROCESSED=PASS bytes=$bytes sha256=$sha"
+          {
+            echo '### Anthares off-Windows CPU/SSD proof'
+            echo 'GitHub-hosted Linux processed a public clip without using the Windows D: drive.'
+            echo "Output bytes: $bytes"
+            echo "SHA-256: $sha"
+            echo 'Temporary media automatically deleted by EXIT trap; no media artifact published.'
+          } >> "$GITHUB_STEP_SUMMARY"
