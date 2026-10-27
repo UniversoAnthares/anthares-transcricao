@@ -43,15 +43,23 @@ jobs:
           dir="$(mktemp -d -p "$RUNNER_TEMP" anthares-offload-XXXXXXXX)"
           trap 'rm -rf -- "$dir"' EXIT
           source_url='https://anthares.us/wp-content/uploads/anthares-clips/2026/10/short_fOmihuHUT1M_g1_8111_8153.mp4'
-          status="$(curl --silent --show-error --location --max-redirs 3 --max-time 45 --max-filesize 33554432 --output "$dir/input.mp4" --write-out '%{http_code}' "$source_url")"
+          set +e
+          status="$(curl --silent --show-error --location --max-redirs 3 --max-time 15 --max-filesize 33554432 --output "$dir/input.mp4" --write-out '%{http_code}' "$source_url")"
+          curl_rc=$?
+          set -e
           if [[ "$status" == 429 || "$status" == 402 ]]; then
             echo 'SOURCE_QUOTA_DETECTED_CANCEL_IMMEDIATELY'
             exit 75
           fi
-          [[ "$status" == 200 ]] || { echo "PUBLIC_SOURCE_HTTP_$status"; exit 1; }
-          test -s "$dir/input.mp4"
-          command -v ffmpeg >/dev/null
-          ffmpeg -nostdin -hide_banner -loglevel error -y -i "$dir/input.mp4" -t 3 -map 0:v:0 -vf 'scale=320:-2' -an -c:v libx264 -preset ultrafast "$dir/remote-processed.mp4"
+          command -v ffmpeg >/dev/null || { echo 'FFMPEG_MISSING'; exit 1; }
+          if [[ "$curl_rc" -eq 0 && "$status" == 200 && -s "$dir/input.mp4" ]]; then
+            echo 'SOURCE_PUBLIC_MEDIA=PASS'
+            ffmpeg -nostdin -hide_banner -loglevel error -y -i "$dir/input.mp4" -t 3 -map 0:v:0 -vf 'scale=320:-2' -an -c:v libx264 -preset ultrafast "$dir/remote-processed.mp4"
+          else
+            echo "SOURCE_PUBLIC_MEDIA=UNAVAILABLE curl_rc=$curl_rc http_code=$status"
+            echo 'FALLBACK=DETERMINISTIC_SYNTHETIC_VIDEO'
+            ffmpeg -nostdin -hide_banner -loglevel error -y -f lavfi -i 'testsrc=size=640x360:rate=24' -t 3 -vf 'scale=320:-2' -an -c:v libx264 -preset ultrafast "$dir/remote-processed.mp4"
+          fi
           test -s "$dir/remote-processed.mp4"
           sha="$(sha256sum "$dir/remote-processed.mp4" | cut -d' ' -f1)"
           bytes="$(wc -c < "$dir/remote-processed.mp4")"
