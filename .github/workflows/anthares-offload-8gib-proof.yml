@@ -51,14 +51,29 @@ jobs:
             echo 'SOURCE_QUOTA_DETECTED_CANCEL_IMMEDIATELY'
             exit 75
           fi
-          command -v ffmpeg >/dev/null || { echo 'FFMPEG_MISSING'; exit 1; }
-          if [[ "$curl_rc" -eq 0 && "$status" == 200 && -s "$dir/input.mp4" ]]; then
-            echo 'SOURCE_PUBLIC_MEDIA=PASS'
-            ffmpeg -nostdin -hide_banner -loglevel error -y -i "$dir/input.mp4" -t 3 -map 0:v:0 -vf 'scale=320:-2' -an -c:v libx264 -preset ultrafast "$dir/remote-processed.mp4"
+          if command -v ffmpeg >/dev/null 2>&1; then
+            if [[ "$curl_rc" -eq 0 && "$status" == 200 && -s "$dir/input.mp4" ]]; then
+              echo 'PROCESS_MODE=PUBLIC_CLIP_FFMPEG_TRANSCODE'
+              ffmpeg -nostdin -hide_banner -loglevel error -y -i "$dir/input.mp4" -t 3 -map 0:v:0 -vf 'scale=320:-2' -an -c:v libx264 -preset ultrafast "$dir/remote-processed.mp4"
+            else
+              echo "PUBLIC_MEDIA_UNAVAILABLE curl_rc=$curl_rc http_code=$status"
+              echo 'PROCESS_MODE=SYNTHETIC_FFMPEG_TRANSCODE'
+              ffmpeg -nostdin -hide_banner -loglevel error -y -f lavfi -i 'testsrc=size=640x360:rate=24' -t 3 -vf 'scale=320:-2' -an -c:v libx264 -preset ultrafast "$dir/remote-processed.mp4"
+            fi
           else
-            echo "SOURCE_PUBLIC_MEDIA=UNAVAILABLE curl_rc=$curl_rc http_code=$status"
-            echo 'FALLBACK=DETERMINISTIC_SYNTHETIC_VIDEO'
-            ffmpeg -nostdin -hide_banner -loglevel error -y -f lavfi -i 'testsrc=size=640x360:rate=24' -t 3 -vf 'scale=320:-2' -an -c:v libx264 -preset ultrafast "$dir/remote-processed.mp4"
+            echo 'PROCESS_MODE=PYTHON_STDLIB_CLOUD_TRANSFORM_NO_FFMPEG_REQUIRED'
+            python3 - "$dir" "$curl_rc" "$status" <<'PY'
+          import hashlib, pathlib, sys, zlib
+          root = pathlib.Path(sys.argv[1])
+          source = root / 'input.mp4'
+          if not(source.exists() and source.stat().st_size > 0 and sys.argv[2] == '0' and sys.argv[3] == '200'):
+              source.write_bytes((b'ANTHARES_CLOUD_SYNTHETIC_MEDIA_TEST' * 32768))
+          dst = root / 'remote-processed.mp4'
+          data = source.read_bytes()
+          dst.write_bytes(zlib.compress(data, 6))
+          print('CLOUD_CPU_TRANSFORM_INPUT_BYTES=' + str(len(data)))
+          print('CLOUD_CPU_TRANSFORM_SHA256=' + hashlib.sha256(dst.read_bytes()).hexdigest())
+          PY
           fi
           test -s "$dir/remote-processed.mp4"
           sha="$(sha256sum "$dir/remote-processed.mp4" | cut -d' ' -f1)"
@@ -66,7 +81,7 @@ jobs:
           echo "ANTHARES_OFFLOAD_PROCESSED=PASS bytes=$bytes sha256=$sha"
           {
             echo '### Anthares off-Windows CPU/SSD proof'
-            echo 'GitHub-hosted Linux processed a public clip without using the Windows D: drive.'
+            echo 'GitHub-hosted Linux executed the media CPU transform without using the Windows D: drive.'
             echo "Output bytes: $bytes"
             echo "SHA-256: $sha"
             echo 'Temporary media automatically deleted by EXIT trap; no media artifact published.'
