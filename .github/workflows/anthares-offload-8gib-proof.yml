@@ -54,12 +54,12 @@ jobs:
           if command -v ffmpeg >/dev/null 2>&1; then
             if [[ "$curl_rc" -eq 0 && "$status" == 200 && -s "$dir/input.mp4" ]]; then
               echo 'PROCESS_MODE=PUBLIC_CLIP_FFMPEG_TRANSCODE'
-              output="$output"
+              output="$dir/remote-processed.mp4"
               ffmpeg -nostdin -hide_banner -loglevel error -y -i "$dir/input.mp4" -t 3 -map 0:v:0 -vf 'scale=320:-2' -an -c:v libx264 -preset ultrafast "$output"
             else
               echo "PUBLIC_MEDIA_UNAVAILABLE curl_rc=$curl_rc http_code=$status"
               echo 'PROCESS_MODE=SYNTHETIC_FFMPEG_TRANSCODE'
-              output="$output"
+              output="$dir/remote-processed.mp4"
               ffmpeg -nostdin -hide_banner -loglevel error -y -f lavfi -i 'testsrc=size=640x360:rate=24' -t 3 -vf 'scale=320:-2' -an -c:v libx264 -preset ultrafast "$output"
             fi
           else
